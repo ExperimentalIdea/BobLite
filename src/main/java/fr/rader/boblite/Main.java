@@ -215,5 +215,4 @@ public class Main {
     public String getProjectName() {
         return this.projectName;
     }
-
 }
