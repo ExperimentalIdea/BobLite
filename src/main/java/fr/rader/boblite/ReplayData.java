@@ -2,14 +2,11 @@ package fr.rader.boblite;
 
 import com.google.gson.Gson;
 import fr.rader.boblite.utils.DataReader;
-import fr.rader.boblite.utils.IO;
-import fr.rader.boblite.utils.OS;
 import fr.rader.boblite.utils.ReplayZip;
 
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,55 +15,23 @@ public class ReplayData {
     private Map<String, Object> metaData = new HashMap<>();
 
     private final ReplayZip replayZip;
-    private final File project;
+    private final File mcprFile;
+
     private final Main main;
 
-    private File mcprFile;
+    public ReplayData(File mcprFile, Main main) throws NullPointerException {
+        if (mcprFile == null) {
+            throw new NullPointerException("The mcpr file cannot be null");
+        }
 
-    public ReplayData(File project, Main main) {
-        this.project = project;
+        if (main == null) {
+            throw new NullPointerException("main is null");
+        }
+
+        this.mcprFile = mcprFile;
         this.main = main;
 
-        boolean alreadyHasReplay = false;
-
-        File[] projectFiles = project.listFiles();
-
-        if (projectFiles == null) {
-            System.out.println("'" + project.getAbsolutePath() + "' is not a valid path.");
-            System.exit(0);
-        }
-
-        for (File file : projectFiles) {
-            if (file.getName().endsWith(".mcpr")) {
-                alreadyHasReplay = true;
-                mcprFile = file;
-            }
-        }
-
-        if (!alreadyHasReplay) {
-            mcprFile = IO.openFilePrompt(OS.getMinecraftFolder() + "replay_recordings/", true, "Replay File", "mcpr");
-        }
-
-        if (mcprFile == null || mcprFile.isDirectory()) {
-            System.out.println("No Replay selected, stopping.");
-            System.exit(0);
-        }
-
-        if (!mcprFile.getName().endsWith("mcpr")) {
-            System.out.println("File is not a replay");
-            System.exit(0);
-        }
-
-        File oldMcprFile = new File(project.getAbsolutePath() + "/" + this.mcprFile.getName());
-        if (!alreadyHasReplay) {
-            try {
-                Files.copy(this.mcprFile.toPath(), oldMcprFile.toPath());
-            } catch (IOException ignored) {}
-
-            mcprFile = oldMcprFile;
-        }
-
-        replayZip = new ReplayZip(mcprFile);
+        this.replayZip = new ReplayZip(mcprFile);
         readMetaData();
         checkUnofficialReplays();
     }
@@ -101,17 +66,13 @@ public class ReplayData {
     }
 
     private void stopBob() {
-        JOptionPane.showMessageDialog(null, "Badlion/Lunar Replay detected, stopping Bob.\nPlease use the official ReplayMod.");
+        JOptionPane.showMessageDialog(null,  mcprFile.getName() + "\nBadlion/Lunar Replay detected, stopping Bob.\nPlease use the official ReplayMod.");
 
         // clear last opened project and delete files
-        main.getProjects().removeProject(project.getName());
+        main.getProjects().removeProject(main.getProjectName());
         main.getProjects().saveProjects();
 
         System.exit(0);
-    }
-
-    public File getMcprFile() {
-        return mcprFile;
     }
 
     public Object getMetaData(String key) {

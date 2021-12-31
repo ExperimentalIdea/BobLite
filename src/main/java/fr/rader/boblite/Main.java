@@ -1,7 +1,6 @@
 package fr.rader.boblite;
 
 import fr.rader.boblite.guis.Menu;
-import fr.rader.boblite.guis.ProgressBar;
 import fr.rader.boblite.guis.ProjectSelector;
 import fr.rader.boblite.utils.*;
 
@@ -9,12 +8,19 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class Main {
 
     public static final Image BOB_LOGO = new ImageIcon(Main.class.getResource("/bob_logo.png")).getImage();
 
     private Projects projects;
+    private String projectName;
 
     public void start() {
         // get the projects list
@@ -23,110 +29,80 @@ public class Main {
         // open the project selector
         ProjectSelector selector = new ProjectSelector(projects);
         // get the project name from the selector
-        String projectName = selector.createWindow();
+        this.projectName = selector.createWindow();
 
         // we quit the program if the file is null (if we closed the window)
-        if (projectName == null) {
+        if (this.projectName == null) {
             return;
         }
 
-        // get the project file from the project name
-        File project = new File(OS.getBobFolder() + "projects/" + projectName);
+        // get the project folder from the project name
+        File projectFolder = new File(OS.getBobFolder() + "projects/" + this.projectName);
 
-        // get the replay data from the project file
-        ReplayData replayData = new ReplayData(project, this);
+        // get all the files in the project folder
+        File[] projectFiles = projectFolder.listFiles();
+        // if projectsFiles is null, that means
+        // the project folder doesn't exist, so we exit
+        if (projectFiles == null) {
+            System.out.println("'" + projectFolder.getAbsolutePath() + "' is not a valid path.");
+            System.exit(0);
+        }
 
-        // here, we get the correct packet id depending on the protocol version
-        int timePacketID;
-        int weatherPacketID;
-        int chatPacketID;
-        switch ((String) replayData.getMetaData("mcversion")) {
-            case "1.8":
-            case "1.8.1":
-            case "1.8.2":
-            case "1.8.3":
-            case "1.8.4":
-            case "1.8.5":
-            case "1.8.6":
-            case "1.8.7":
-            case "1.8.8":
-            case "1.8.9":
-                timePacketID = 0x03;
-                weatherPacketID = 0x2B;
-                chatPacketID = 0x02;
-                break;
+        // load .mcpr files from the project folder
+        List<ReplayData> replays = new ArrayList<>();
+        // we loop through all the files
+        for (File file : projectFiles) {
+            // we check if it's a file and has the correct extension
+            if (!file.isDirectory() && file.getName().endsWith(".mcpr")) {
+                // if it's a file with the correct extension,
+                // we add it to the list of replays
+                replays.add(
+                        new ReplayData(
+                                file,
+                                this
+                        )
+                );
+            }
+        }
 
-            case "1.9":
-            case "1.9.1":
-            case "1.9.2":
-            case "1.9.3":
-            case "1.9.4":
-            case "1.10":
-            case "1.10.1":
-            case "1.10.2":
-            case "1.11":
-            case "1.11.1":
-            case "1.11.2":
-                timePacketID = 0x44;
-                weatherPacketID = 0x1E;
-                chatPacketID = 0x0F;
-                break;
+        // if no .mcpr files existed in the project folder, ask the user to select one or more .mcpr files.
+        if (replays.isEmpty()) {
+            File[] files = IO.openFilePrompt(OS.getMinecraftFolder() + "replay_recordings/", "Replay File", "mcpr");
 
-            case "1.12":
-            case "1.12.1":
-            case "1.12.2":
-                timePacketID = 0x47;
-                weatherPacketID = 0x1E;
-                chatPacketID = 0x0F;
-                break;
+            // if the user didn't select any files, exit.
+            if (files == null) {
+                System.out.println("No Replays selected, stopping.");
+                System.exit(0);
+            }
 
-            case "1.14":
-            case "1.14.1":
-            case "1.14.2":
-            case "1.14.3":
-            case "1.14.4":
-                timePacketID = 0x4E;
-                weatherPacketID = 0x1E;
-                chatPacketID = 0x0E;
-                break;
+            // we loop through all the files the user selected
+            for (File file : files) {
+                File newFile = new File(projectFolder.getAbsolutePath() + "/" + file.getName());
 
-            case "1.15":
-            case "1.15.1":
-            case "1.15.2":
-                timePacketID = 0x4F;
-                weatherPacketID = 0x1F;
-                chatPacketID = 0x0F;
-                break;
+                try {
+                    // we copy the replay to the projects folder
+                    Files.copy(
+                            file.toPath(),
+                            newFile.toPath()
+                    );
 
-            case "1.16":
-            case "1.16.1":
-            case "1.16.2":
-            case "1.16.3":
-            case "1.16.4":
-            case "1.16.5":
-                timePacketID = 0x4E;
-                weatherPacketID = 0x1D;
-                chatPacketID = 0x0E;
-                break;
+                    // and we add the replay to the replays list
+                    replays.add(
+                            new ReplayData(
+                                    file,
+                                    this
+                            )
+                    );
+                } catch (IOException exception) {
+                    // if there is a problem, we send an error
+                    System.out.println("Failed to copy file from " + file.getAbsolutePath() + " to " + newFile.getAbsolutePath());
+                    // we print the exception
+                    exception.printStackTrace();
 
-            case "1.17":
-            case "1.17.1":
-                timePacketID = 0x58;
-                weatherPacketID = 0x1E;
-                chatPacketID = 0x0F;
-                break;
-
-            case "1.18":
-            case "1.18.1":
-                timePacketID = 0x59;
-                weatherPacketID = 0x1E;
-                chatPacketID = 0x0F;
-                break;
-
-            // we show an error and stop if the protocol isn't supported
-            default:
-                JOptionPane.showMessageDialog(null, "Error: unsupported Minecraft version: " + replayData.getMetaData("mcversion"));
-                return;
+                    // and we exit
+                    System.exit(0);
+                }
+            }
         }
 
         // we then show the edit menu
@@ -139,126 +115,81 @@ public class Main {
             return;
         }
 
-        try {
-            // get the mcpr file as a zip file
-            ReplayZip replayZip = replayData.getReplayZip();
-            // we open the recording.tmcpr file in a data reader
-            DataReader reader = new DataReader(replayZip.getEntry("recording.tmcpr"));
-            // we also create a data writer to write the modified packets
-            // or any packets that we don't want to edit
-            DataWriter writer = new DataWriter(false);
-
-            writer.writeInt(reader.readInt());
-            int length = reader.readInt();
-            writer.writeInt(length);
-            writer.writeByteArray(reader.readFollowingBytes(length));
-
-            // getting the replay duration for the progress bar
-            Double duration = (Double) replayData.getMetaData("duration");
-            // creating the progress bar and setting the action text
-            ProgressBar progressBar = new ProgressBar(duration.intValue());
-            progressBar.setActionText("Editing the replay...");
-            // showing the progress bar
-            progressBar.show();
-
-            // iterate while we still have some data in the reader
-            while (reader.getLength() != 0) {
-                // get the timestamp, the size and the packet id
-                int timestamp = reader.readInt();
-                int size = reader.readInt();
-                int packetID = reader.readVarInt();
-
-                // changing the progress bar value
-                progressBar.setProgressBarValue(timestamp);
-
-                // check if the packet id is a chat message packet,
-                // and if the removeChat checkbox is checked
-                if (menu.isRemoveChatChecked() && packetID == chatPacketID) {
-                    // if bob has to remove the chat packet,
-                    // we skip it, and we don't write it
-                    reader.skip(size - 1);
-                    continue;
-                }
-
-                // check if the packet id is a time packet,
-                // and if the changeTime checkbox is checked
-                if (menu.isChangeTimeChecked() && packetID == timePacketID) {
-                    // writing packet header
-                    writer.writeInt(timestamp);
-                    writer.writeInt(size);
-                    writer.writeVarInt(packetID);
-
-                    // writing world age
-                    writer.writeLong(reader.readLong());
-                    // writing new time
-                    writer.writeLong(menu.getNewTime());
-
-                    // skip the next 8 bytes (old world time)
-                    reader.skip(8);
-
-                    continue;
-                }
-
-                // check if the packet id is a weather packet,
-                // and if the removeRain checkbox is checked
-                if (menu.isRemoveRainChecked() && packetID == weatherPacketID) {
-                    // get the reason, we don't want to ignore it because
-                    // this packet isn't always used for the weather
-                    int reason = reader.readByte();
-
-                    // reason == 1 -> end raining
-                    // reason == 2 -> begin raining
-                    // reason == 7 -> rain level change
-                    // reason == 8 -> thunder level change
-                    // iirc reason 1 and 2 are swapped
-                    if (reason != 1 && reason != 2 && reason != 7 && reason != 8) {
-                        // if the packet does not change the rain, we write it
-                        // packet header
-                        writer.writeInt(timestamp);
-                        writer.writeInt(size);
-                        writer.writeVarInt(packetID);
-
-                        // packet content
-                        writer.writeByte(reason);
-                        writer.writeFloat(reader.readFloat());
-                    } else {
-                        // we skip the next 4 bytes (new rain/thunder level)
-                        reader.skip(4);
-                    }
-
-                    continue;
-                }
-
-                // we write the packet timestamp, size, packet id
-                writer.writeInt(timestamp);
-                writer.writeInt(size);
-                writer.writeVarInt(packetID);
-                // and finally, we write the packet data
-                writer.writeByteArray(reader.readFollowingBytes(size - 1));
-            }
-
-            // we then flush the writer
-            writer.flush();
-
-            // changing the progress bar action text,
-            // as we're now doing something else
-            progressBar.setActionText("Writing the replay, this can take a while...");
-
-            // we open the zip file, write the recording.tmcpr file and close the zip
-            replayZip.open();
-            replayZip.addFile(writer.getInputStream(), "recording.tmcpr");
-            replayZip.close();
-
-            writer.clear();
-
-            // kill the progress bar window as it's now useless
-            progressBar.kill();
-
-            // then open the file explorer to the folder that contains the replay
-            IO.openFileExplorer(replayData.getMcprFile().getParentFile());
-        } catch (IOException e) {
-            e.printStackTrace();
+        // ask the user where temporary file(s) should be located
+        File tempFileDirectory = IO.saveFilePrompt(null);
+        // if no folder is given, we exit
+        if (tempFileDirectory == null) {
+            System.exit(0);
         }
+
+        // Okay, time to get working!
+
+        // we get the total number of system CPU threads.
+        int totalSystemThreadNumber = Runtime.getRuntime().availableProcessors();
+
+        int executorThreadNumber =
+                (replays.size() < totalSystemThreadNumber)  // if we have less replays than threads
+                        ?
+                replays.size()                              // we set the number of threads to use to the number of replays we have to edit
+                        :
+                totalSystemThreadNumber - 1;                // else, we use all the threads - 1 to not make the computer unusable
+
+        // if for whatever reason the computer only has one CPU core/thread, just use one thread.
+        if (executorThreadNumber < 1) {
+            executorThreadNumber = 1;
+        }
+
+        System.out.println("Using " + executorThreadNumber + " thread(s) for " + replays.size() + " task(s)...");
+
+        // we create a thread pool for our edit replay tasks
+        ExecutorService executor = Executors.newFixedThreadPool(executorThreadNumber);
+
+        // we get the start of execution, to calculate
+        // how long it took bob to edit the replays
+        long startTime = System.currentTimeMillis();
+
+        // we loop through all of our replays
+        for (ReplayData replay : replays) {
+            // and we submit them to
+            // the executor to be executed
+            executor.submit(
+                    new EditReplayTask(
+                            replay,
+                            tempFileDirectory,
+                            menu
+                    )
+            );
+        }
+
+        // wait for all task to be completed.
+        executor.shutdown();
+
+        try {
+            // timeout doesn't really matter in this use case as we will want to wait for all tasks to complete before terminating.
+            executor.awaitTermination(Integer.MAX_VALUE, TimeUnit.DAYS);
+        } catch (InterruptedException exception) {
+            // This should never happen.
+            // just in case, we shutdown the executor
+            executor.shutdownNow();
+
+            // we print an error and the stacktrace
+            System.out.println("Interrupted while waiting for all tasks to complete.");
+            exception.printStackTrace();
+
+            // we also show a message to the user
+            JOptionPane.showMessageDialog(null,  "Error:\nInterrupted while waiting for all tasks to complete.");
+            // and we exit
+            System.exit(0);
+        }
+
+        // we calculate the total execution time
+        long totalTime = (System.currentTimeMillis() - startTime) / 1000;
+        // print the total execution time in human-readable format
+        System.out.println("Completed " + replays.size() + " task(s) in " + (totalTime / 60) + "m " + (totalTime % 60) + "s");
+        System.out.println("File(s) located at " + projectFolder.getAbsolutePath());
+
+        // Open the file explorer where the replay(s) are saved.
+        IO.openFileExplorer(projectFolder);
     }
 
     public static void main(String[] args) {
@@ -279,5 +210,9 @@ public class Main {
 
     public Projects getProjects() {
         return projects;
+    }
+
+    public String getProjectName() {
+        return this.projectName;
     }
 }
